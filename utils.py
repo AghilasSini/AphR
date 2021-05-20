@@ -13,6 +13,9 @@ import scipy.io.wavfile as wav
 from tqdm import tqdm
 
 from phoneme_set import phoneme_set_48, phoneme_48_39, phoneme_set_39
+from frphn_sampa_alpha_set import phoneme_34_34,phoneme_set_34
+
+
 
 def load_data(train_path):
     wav_files = []
@@ -56,7 +59,9 @@ def process_data(wav_files, phn_files):
             for row in phn_reader:
                 if row[2] == 'q':
                     continue
-                phn_labels.append(phoneme_set_39[phoneme_48_39.get(row[2], row[2])] - 1)
+                #phn_labels.append(phoneme_set_39[phoneme_48_39.get(row[2], row[2])] - 1)
+                phn_labels.append(phoneme_set_34[phoneme_34_34.get(row[2], row[2])] - 1)
+
 
         inputs.append(acoustic_features)
         targets.append(phn_labels)
@@ -124,5 +129,7 @@ def process_raw_phn(phn_file):
         for row in phn_reader:
             if row[2] == 'q':
                 continue
-            phn_labels.append(phoneme_48_39.get(row[2], row[2]))
+            #phn_labels.append(phoneme_48_39.get(row[2], row[2]))
+            phn_labels.append(phoneme_34_34.get(row[2], row[2]))
+
     return phn_labels

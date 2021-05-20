@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.python.ops import ctc_ops
 
 from phoneme_set import phoneme_set_39
+from frphn_sampa_alpha_set import phoneme_set_34
 from utils import process_wav
 
 
@@ -19,11 +20,17 @@ num_classes = 40 # 39 phonemes + blank
 num_layers = 3 # lstm cells stack together
 num_hidden = 128 # lstm state
 
-num_epochs = 120 
+num_epochs = 140 
 batch_size = 16
 
 learning_rate = 0.001
 momentum = 0.9
+
+def make_cell(num_hidden):
+    return tf.nn.rnn_cell.LSTMCell(num_hidden, use_peepholes=True, state_is_tuple=True)
+
+
+
 
 def train_model(ENV, train_data=None, test_data=None, decode=False, file_decode=False):
     graph = tf.Graph()
@@ -47,13 +54,9 @@ def train_model(ENV, train_data=None, test_data=None, decode=False, file_decode=
         bias_classes = tf.Variable(tf.zeros([num_classes]), dtype=tf.float32)
 
         # Network
-        forward_cell = tf.nn.rnn_cell.LSTMCell(num_hidden, use_peepholes=True, state_is_tuple=True)
-        backward_cell = tf.nn.rnn_cell.LSTMCell(num_hidden, use_peepholes=True, state_is_tuple=True)
 
-        stack_forward_cell = tf.nn.rnn_cell.MultiRNNCell([forward_cell] * num_layers,
-                                                         state_is_tuple=True)
-        stack_backward_cell = tf.nn.rnn_cell.MultiRNNCell([backward_cell] * num_layers,
-                                                          state_is_tuple=True)
+        stack_forward_cell = tf.nn.rnn_cell.MultiRNNCell([make_cell(num_hidden) for _ in range(num_layers)],state_is_tuple=True)
+        stack_backward_cell = tf.nn.rnn_cell.MultiRNNCell([make_cell(num_hidden) for _ in range(num_layers)],state_is_tuple=True)
 
         outputs, _ = tf.nn.bidirectional_dynamic_rnn(stack_forward_cell, 
                                                      stack_backward_cell,
@@ -72,17 +75,30 @@ def train_model(ENV, train_data=None, test_data=None, decode=False, file_decode=
         fw_output = tf.reshape(outputs[0], [-1, num_hidden])
         bw_output = tf.reshape(outputs[1], [-1, num_hidden])
         logits = tf.add(tf.add(tf.matmul(fw_output, weight_classes), tf.matmul(bw_output, weight_classes)), bias_classes)
-
+        # logits = tf.reshape(logits, [batch_size, -1, num_classes])
         logits = tf.reshape(logits, [batch_size, -1, num_classes])
-        loss = tf.reduce_mean(ctc_ops.ctc_loss(logits, targets, seq_len, time_major=False))
-        optimizer = tf.train.MomentumOptimizer(learning_rate, momentum).minimize(loss)
+        logits = tf.transpose(logits, (1, 0, 2))
+        print("logits {} target {}".format(type(logits),type(targets)))
+
+        loss=tf.compat.v1.nn.ctc_loss(targets,logits, seq_len)
+        cost = tf.reduce_mean(loss)
+        optimizer = tf.train.MomentumOptimizer(learning_rate, momentum).minimize(cost)
 
         # Evaluating
         # decoded, log_prob = ctc_ops.ctc_greedy_decoder(tf.transpose(logits, perm=[1, 0, 2]), seq_len)
-        decoded, log_prob = ctc_ops.ctc_beam_search_decoder(tf.transpose(logits, perm=[1, 0, 2]), seq_len)
-        label_error_rate = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), targets))
+        #decoded, log_prob = ctc_ops.ctc_beam_search_decoder(tf.transpose(logits, perm=[1, 0, 2]), seq_len)
+        # label_error_rate = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), targets))
+        # Option 2: tf.nn.ctc_beam_search_decoder
+        # (it's slower but you'll get better results)
+        decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seq_len)
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+        # Accuracy: label error rate
+        label_error_rate = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32),
+                                            targets))
+
+
+
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1)
 
     with tf.Session(graph=graph, config=tf.ConfigProto(gpu_options=gpu_options)) as session:
         session.run(tf.global_variables_initializer())
@@ -157,10 +173,12 @@ def train_model(ENV, train_data=None, test_data=None, decode=False, file_decode=
                     seq_len: batch_seq_len
                 }
                 d, oc = session.run([decoded[0], outputs], feed_dict=feed)
-                dsp = d.shape
+                dsp = d.dense_shape
                 res = []
                 for label in d.values[:dsp[1]]:
-                    for k, v in phoneme_set_39.items():
+                    #for k, v in phoneme_set_39.items():
+                    for k, v in phoneme_set_34.items():
+
                         if v == label + 1:
                             res.append(k)           
                 print(res)

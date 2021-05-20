@@ -45,8 +45,8 @@ def decode(ENV, args):
 
 
 def transform(ENV, args):
-    train_wav_files, train_phn_files = load_train_data(ENV.train_data)
-    test_wav_files = load_test_data(ENV.test_data)
+    train_wav_files, train_phn_files = load_data(ENV.train_data)
+    test_wav_files = load_data(ENV.test_data)
     train_output_path = os.path.join(ENV.output, 'train')
     test_output_path = os.path.join(ENV.output, 'test')
     if not os.path.exists(train_output_path):
